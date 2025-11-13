@@ -5,28 +5,22 @@
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
-
-
-#include "config.h" 
-
+#include "config.h"
 
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 Adafruit_MPU6050 mpu;
-sensors_event_t a, g, temp; // Sensor event objects
-
+sensors_event_t a, g, temp;
 
 void setup_wifi();
 void setup_mqtt();
 void reconnect_mqtt();
 void publish_sensor_data();
-long lastMsg = 0; // Timer for publishing data
-
+long lastMsg = 0;
 
 void setup() {
     Serial.begin(MONITOR_SPEED);
     Serial.println("Booting up...");
-
 
     if (!mpu.begin()) {
         Serial.println("Failed to find MPU6050 chip");
@@ -36,7 +30,6 @@ void setup() {
     }
     Serial.println("MPU6050 Found!");
 
-   
     mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
     mpu.setGyroRange(MPU6050_RANGE_500_DEG);
     mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
@@ -45,26 +38,19 @@ void setup() {
     setup_mqtt();
 }
 
-
 void loop() {
     if (!mqttClient.connected()) {
         reconnect_mqtt();
     }
     mqttClient.loop();
 
-    
     long now = millis();
     if (now - lastMsg > PUBLISH_INTERVAL) {
         lastMsg = now;
-
-        
         mpu.getEvent(&a, &g, &temp);
-
-  
         publish_sensor_data();
     }
 }
-
 
 void setup_wifi() {
     delay(10);
@@ -85,12 +71,10 @@ void setup_wifi() {
     Serial.println(WiFi.localIP());
 }
 
-// --- MQTT Setup ---
 void setup_mqtt() {
     mqttClient.setServer(MQTT_BROKER_IP, MQTT_PORT);
 }
 
-// --- MQTT Reconnect ---
 void reconnect_mqtt() {
     while (!mqttClient.connected()) {
         Serial.print("Attempting MQTT connection...");
@@ -105,11 +89,8 @@ void reconnect_mqtt() {
     }
 }
 
-// --- Publish Sensor Data ---
 void publish_sensor_data() {
-    StaticJsonDocument<256> doc; // Create JSON document
-
-    // Add sensor values to the JSON document
+    StaticJsonDocument<256> doc;
     doc["node_id"] = NODE_ID;
     doc["ax"] = a.acceleration.x;
     doc["ay"] = a.acceleration.y;
@@ -119,11 +100,9 @@ void publish_sensor_data() {
     doc["gz"] = g.gyro.z;
     doc["rssi"] = WiFi.RSSI();
 
-    // Serialize JSON to a string
     char payload[256];
     serializeJson(doc, payload);
 
-    // Publish the payload
     Serial.print("Publishing message: ");
     Serial.println(payload);
     mqttClient.publish(MQTT_TOPIC_TELEMETRY, payload);
