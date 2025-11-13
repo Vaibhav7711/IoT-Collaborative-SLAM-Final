@@ -1,0 +1,77 @@
+import paho.mqtt.client as mqtt
+import json
+from flask import Flask, render_template, jsonify
+from datetime import datetime
+import threading
+import logging
+
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+node_data = {}
+data_lock = threading.Lock()
+
+MQTT_BROKER = "172.168.1.50"
+MQTT_PORT = 1883
+MQTT_TOPIC = "esp32/nodes/+"
+
+def on_connect(client, userdata, flags, rc):
+    logging.info(f"Connected to MQTT with result code {rc}")
+    client.subscribe(MQTT_TOPIC)
+
+def update_node_data(node_id, data):
+    with data_lock:
+        if node_id not in node_data:
+            node_data[node_id] = {}
+            logging.info(f"New node detected: {node_id}")
+        try:
+            node_data[node_id]["ax"] = float(data.get("ax", 0))
+            node_data[node_id]["ay"] = float(data.get("ay", 0))
+            node_data[node_id]["az"] = float(data.get("az", 0))
+            node_data[node_id]["gx"] = float(data.get("gx", 0))
+            node_data[node_id]["gy"] = float(data.get("gy", 0))
+            node_data[node_id]["gz"] = float(data.get("gz", 0))
+            node_data[node_id]["rssi"] = int(data.get("rssi", 0))
+            node_data[node_id]["last_seen"] = datetime.utcnow().isoformat() + "Z"
+            logging.debug(f"Updated data for {node_id}: {node_data[node_id]}")
+        except Exception as e:
+            logging.error(f"Error updating data for {node_id}: {e}")
+
+def on_message(client, userdata, msg):
+    try:
+        logging.debug(f"Received message from topic: {msg.topic}")
+        node_id = msg.topic.split('/')[-1]
+        payload = msg.payload.decode('utf-8')
+        data = json.loads(payload)
+        update_node_data(node_id, data)
+    except json.JSONDecodeError:
+        logging.warning(f"Error decoding JSON from topic {msg.topic}")
+    except Exception as e:
+        logging.error(f"Error in on_message: {e}")
+
+def start_mqtt_client():
+    client = mqtt.Client()
+    client.on_connect = on_connect
+    client.on_message = on_message
+    try:
+        client.connect(MQTT_BROKER, MQTT_PORT, 60)
+        client.loop_forever()
+    except Exception as e:
+        logging.critical(f"Could not connect to MQTT broker: {e}")
+
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/api/nodes')
+def get_nodes():
+    with data_lock:
+        return jsonify(node_data.copy())
+
+if __name__ == '__main__':
+    mqtt_thread = threading.Thread(target=start_mqtt_client, daemon=True)
+    mqtt_thread.start()
+    logging.info("Starting Flask web server on http://0.0.0.0:5000")
+    app.run(host='0.0.0.0', port=5000)
