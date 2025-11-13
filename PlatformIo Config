@@ -3,10 +3,8 @@ platform = espressif32
 board = esp32dev
 framework = arduino
 
-; Serial Monitor baud rate
 monitor_speed = 115200
 
-; Project Library Dependencies for MPU6050
 lib_deps =
     knolleary/PubSubClient
     bblanchon/ArduinoJson
