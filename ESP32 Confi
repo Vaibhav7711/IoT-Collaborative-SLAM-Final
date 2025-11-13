@@ -1,0 +1,15 @@
+#pragma once
+
+#define WIFI_SSID "BITS-WIFI"
+#define WIFI_PASS "Bits@123"
+
+
+#define MQTT_BROKER_IP "172.168.1.100"
+#define MQTT_PORT 1883
+
+
+#define NODE_ID "esp32-mpu6050-1"
+#define MQTT_TOPIC_TELEMETRY "esp32/nodes/" NODE_ID
+
+
+#define PUBLISH_INTERVAL 5000 
