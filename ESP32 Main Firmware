@@ -1,0 +1,130 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+
+
+#include "config.h" 
+
+
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
+Adafruit_MPU6050 mpu;
+sensors_event_t a, g, temp; // Sensor event objects
+
+
+void setup_wifi();
+void setup_mqtt();
+void reconnect_mqtt();
+void publish_sensor_data();
+long lastMsg = 0; // Timer for publishing data
+
+
+void setup() {
+    Serial.begin(MONITOR_SPEED);
+    Serial.println("Booting up...");
+
+
+    if (!mpu.begin()) {
+        Serial.println("Failed to find MPU6050 chip");
+        while (1) {
+            delay(10);
+        }
+    }
+    Serial.println("MPU6050 Found!");
+
+   
+    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+
+    setup_wifi();
+    setup_mqtt();
+}
+
+
+void loop() {
+    if (!mqttClient.connected()) {
+        reconnect_mqtt();
+    }
+    mqttClient.loop();
+
+    
+    long now = millis();
+    if (now - lastMsg > PUBLISH_INTERVAL) {
+        lastMsg = now;
+
+        
+        mpu.getEvent(&a, &g, &temp);
+
+  
+        publish_sensor_data();
+    }
+}
+
+
+void setup_wifi() {
+    delay(10);
+    Serial.println();
+    Serial.print("Connecting to ");
+    Serial.println(WIFI_SSID);
+
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+
+    Serial.println("");
+    Serial.println("WiFi connected!");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+}
+
+// --- MQTT Setup ---
+void setup_mqtt() {
+    mqttClient.setServer(MQTT_BROKER_IP, MQTT_PORT);
+}
+
+// --- MQTT Reconnect ---
+void reconnect_mqtt() {
+    while (!mqttClient.connected()) {
+        Serial.print("Attempting MQTT connection...");
+        if (mqttClient.connect(NODE_ID)) {
+            Serial.println("connected!");
+        } else {
+            Serial.print("failed, rc=");
+            Serial.print(mqttClient.state());
+            Serial.println(" try again in 5 seconds");
+            delay(5000);
+        }
+    }
+}
+
+// --- Publish Sensor Data ---
+void publish_sensor_data() {
+    StaticJsonDocument<256> doc; // Create JSON document
+
+    // Add sensor values to the JSON document
+    doc["node_id"] = NODE_ID;
+    doc["ax"] = a.acceleration.x;
+    doc["ay"] = a.acceleration.y;
+    doc["az"] = a.acceleration.z;
+    doc["gx"] = g.gyro.x;
+    doc["gy"] = g.gyro.y;
+    doc["gz"] = g.gyro.z;
+    doc["rssi"] = WiFi.RSSI();
+
+    // Serialize JSON to a string
+    char payload[256];
+    serializeJson(doc, payload);
+
+    // Publish the payload
+    Serial.print("Publishing message: ");
+    Serial.println(payload);
+    mqttClient.publish(MQTT_TOPIC_TELEMETRY, payload);
+}
